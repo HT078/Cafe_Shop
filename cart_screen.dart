@@ -1,13 +1,12 @@
-<<<<<<< HEAD
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../../../models/cart_item_model.dart';
-import '../../../providers/cart_provider.dart';
-import '../../../theme/theme.dart';
-import '../../../widgets/customer/login_gate.dart';
-import '../checkout/checkout_screen.dart';
+import '../../models/cart_item_model.dart';
+import '../../providers/cart_provider.dart';
+import '../../theme/theme.dart';
+import '../../widgets/customer/login_gate.dart';
+import 'checkout/checkout_screen.dart';
 
 class CartScreen extends StatefulWidget {
   const CartScreen({super.key, this.onExploreProducts});
@@ -588,6 +587,3 @@ class _EmptyCart extends StatelessWidget {
     );
   }
 }
-=======
-
->>>>>>> bcd609c213886b968afa39d3bbf017848e51c7ed

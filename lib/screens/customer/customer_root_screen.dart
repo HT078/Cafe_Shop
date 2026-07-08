@@ -1,25 +1,9 @@
-<<<<<<< HEAD
-import 'dart:async';
-
-=======
->>>>>>> bcd609c213886b968afa39d3bbf017848e51c7ed
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/cart_provider.dart';
 import '../../theme/theme.dart';
 import '../../widgets/customer/chat_floating_button.dart';
-<<<<<<< HEAD
-import 'account/profile_screen.dart';
-import 'cart/cart_screen.dart';
-import 'catalog/category_screen.dart';
-import 'home/home_screen.dart';
-
-class CustomerRootScreen extends StatefulWidget {
-  const CustomerRootScreen({super.key, this.initialIndex = 0});
-
-  final int initialIndex;
-=======
 import 'cart_screen.dart';
 import 'category_screen.dart';
 import 'home/home_screen.dart';
@@ -27,26 +11,17 @@ import 'profile_screen.dart';
 
 class CustomerRootScreen extends StatefulWidget {
   const CustomerRootScreen({super.key});
->>>>>>> bcd609c213886b968afa39d3bbf017848e51c7ed
 
   @override
   State<CustomerRootScreen> createState() => _CustomerRootScreenState();
 }
 
 class _CustomerRootScreenState extends State<CustomerRootScreen> {
-<<<<<<< HEAD
-  late int _currentIndex;
-=======
   int _currentIndex = 0;
->>>>>>> bcd609c213886b968afa39d3bbf017848e51c7ed
 
   @override
   void initState() {
     super.initState();
-<<<<<<< HEAD
-    _currentIndex = widget.initialIndex.clamp(0, 3).toInt();
-=======
->>>>>>> bcd609c213886b968afa39d3bbf017848e51c7ed
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       context.read<CartProvider>().syncWithCurrentUser();
@@ -55,12 +30,6 @@ class _CustomerRootScreenState extends State<CustomerRootScreen> {
 
   void _selectTab(int index) {
     setState(() => _currentIndex = index);
-<<<<<<< HEAD
-    if (index == 2) {
-      unawaited(context.read<CartProvider>().reloadFromSupabase());
-    }
-=======
->>>>>>> bcd609c213886b968afa39d3bbf017848e51c7ed
   }
 
   @override

@@ -10,11 +10,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../providers/banner_provider.dart';
 import '../../../providers/cart_provider.dart';
 import '../../../providers/product_provider.dart';
-<<<<<<< HEAD
-import '../../../screens/customer/catalog/category_screen.dart';
-=======
 import '../../../screens/customer/category_screen.dart';
->>>>>>> bcd609c213886b968afa39d3bbf017848e51c7ed
 import '../../../screens/auth/login_screen.dart';
 import '../../../screens/customer/product/product_detail_screen.dart';
 import '../../../services/supabase_service.dart';
@@ -23,11 +19,7 @@ import '../../../utils/open_external_url.dart';
 import '../../../widgets/customer/cart_badge.dart';
 import '../../../widgets/customer/brand_logo.dart';
 import '../../../widgets/customer/coffee_search_bar.dart';
-<<<<<<< HEAD
-import '../../../widgets/customer/product_card.dart';
-=======
 import '../../../widgets/product_card.dart';
->>>>>>> bcd609c213886b968afa39d3bbf017848e51c7ed
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.onTabSelected});
