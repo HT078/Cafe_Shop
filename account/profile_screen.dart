@@ -51,7 +51,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return DefaultTabController(
       length: ProfileScreen._tabs.length,
       child: Scaffold(
-        backgroundColor: AppTheme.charColor,
+        backgroundColor: AppTheme.pageColor,
         appBar: AppBar(
           title: const Text('Tài Khoản & Đơn Hàng'),
           centerTitle: true,

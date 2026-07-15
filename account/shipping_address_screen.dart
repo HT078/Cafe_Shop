@@ -92,7 +92,7 @@ class _ShippingAddressScreenState extends State<ShippingAddressScreen> {
     final addresses = context.watch<AccountProvider>().addresses;
 
     return Scaffold(
-      backgroundColor: AppTheme.charColor,
+      backgroundColor: AppTheme.pageColor,
       appBar: AppBar(title: const Text('Địa chỉ giao hàng'), centerTitle: true),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openForm(context),

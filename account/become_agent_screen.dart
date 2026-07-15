@@ -131,7 +131,7 @@ class _BecomeAgentScreenState extends State<BecomeAgentScreen> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-        backgroundColor: AppTheme.charColor,
+        backgroundColor: AppTheme.pageColor,
         body: Center(
           child: CircularProgressIndicator(color: AppTheme.goldColor),
         ),
@@ -142,7 +142,7 @@ class _BecomeAgentScreenState extends State<BecomeAgentScreen> {
     final status = profile.wholesaleStatus;
 
     return Scaffold(
-      backgroundColor: AppTheme.charColor,
+      backgroundColor: AppTheme.pageColor,
       appBar: AppBar(
         title: const Text('Đăng ký làm Khách Sỉ'),
         centerTitle: true,

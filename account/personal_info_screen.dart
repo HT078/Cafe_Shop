@@ -138,7 +138,7 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-        backgroundColor: AppTheme.charColor,
+        backgroundColor: AppTheme.pageColor,
         body: Center(
           child: CircularProgressIndicator(color: AppTheme.goldColor),
         ),
@@ -146,7 +146,7 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
     }
 
     return Scaffold(
-      backgroundColor: AppTheme.charColor,
+      backgroundColor: AppTheme.pageColor,
       appBar: AppBar(title: const Text('Thông tin cá nhân'), centerTitle: true),
       body: Form(
         key: _formKey,
