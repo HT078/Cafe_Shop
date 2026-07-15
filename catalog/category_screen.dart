@@ -80,7 +80,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
           );
 
     return Scaffold(
-      backgroundColor: AppTheme.charColor,
+      backgroundColor: AppTheme.pageColor,
       appBar: AppBar(
         title: const Text('Danh Mục Sản Phẩm'),
         centerTitle: true,
