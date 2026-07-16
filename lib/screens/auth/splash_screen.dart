@@ -30,18 +30,28 @@ class _SplashScreenState extends State<SplashScreen> {
     await Future<void>.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
 
-    final user = SupabaseService.currentUser;
+    var user = SupabaseService.currentUser;
     if (user != null) {
-      await AuthService.syncCurrentUserProfile();
-      if (!mounted) return;
-      await context.read<AuthProvider>().refreshCurrentUser();
-      if (!mounted) return;
-      context.read<CartProvider>().setAgentPricing(
-            context.read<AuthProvider>().isAgent,
-          );
-      await context.read<CartProvider>().syncWithCurrentUser();
-      if (!mounted) return;
+      try {
+        await AuthService.syncCurrentUserProfile();
+        if (!mounted) return;
+        await context.read<AuthProvider>().refreshCurrentUser();
+        if (!mounted) return;
+        context.read<CartProvider>().setAgentPricing(
+              context.read<AuthProvider>().isAgent,
+            );
+        await context.read<CartProvider>().syncWithCurrentUser();
+        if (!mounted) return;
+      } catch (error) {
+        debugPrint('SplashScreen._openNext failed: $error');
+        if (!mounted) return;
+        await context.read<AuthProvider>().refreshCurrentUser();
+        if (!mounted) return;
+        user = SupabaseService.currentUser;
+      }
     }
+
+    if (!mounted) return;
     final isAdmin = context.read<AuthProvider>().isAdmin;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
@@ -58,7 +68,9 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return const Scaffold(
       backgroundColor: AppTheme.charColor,
-      body: Center(child: BrandLogo(size: 112, borderRadius: 28)),
+      body: Center(
+        child: BrandLogo(size: 112, color: AppTheme.lightTextColor),
+      ),
     );
   }
 }

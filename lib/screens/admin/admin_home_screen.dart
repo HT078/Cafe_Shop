@@ -14,12 +14,13 @@ import '../../services/supabase_service.dart';
 import '../../theme/theme.dart';
 import '../auth/login_screen.dart';
 import '../customer/customer_root_screen.dart';
-import 'agent_manage_screen.dart';
-import 'banner_manage_screen.dart';
-import 'chat_manage_screen.dart';
-import 'order_manage_screen.dart';
-import 'product_manage_screen.dart';
-import 'sales_report_screen.dart';
+import 'banner/banner_manage_screen.dart';
+import 'chat/chat_manage_screen.dart';
+import 'order/order_manage_screen.dart';
+import 'product/product_manage_screen.dart';
+import 'report/sales_report_screen.dart';
+import 'voucher/voucher_manage_screen.dart';
+import 'wholesale/agent_manage_screen.dart';
 
 class AdminHomeScreen extends StatefulWidget {
   const AdminHomeScreen({super.key});
@@ -36,6 +37,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     _AdminOverview(),
     BannerManageScreen(),
     ProductManageScreen(),
+    VoucherManageScreen(),
     OrderManageScreen(),
     AgentManageScreen(),
     ChatManageScreen(),
@@ -121,7 +123,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     return Scaffold(
-      backgroundColor: AppTheme.charColor,
+      backgroundColor: AppTheme.pageColor,
       appBar: AppBar(
         title: Column(
           mainAxisSize: MainAxisSize.min,
@@ -164,6 +166,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.inventory_2_outlined),
             label: 'Sản phẩm',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.local_offer_outlined),
+            label: 'Mã giảm',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.receipt_long_outlined),

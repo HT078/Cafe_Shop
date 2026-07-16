@@ -7,12 +7,38 @@ import '../models/cart_item_model.dart';
 import '../models/category_model.dart';
 import '../models/product_model.dart';
 
+class CheckoutOrderResult {
+  const CheckoutOrderResult({
+    required this.id,
+    required this.code,
+    required this.shippingMethod,
+  });
+
+  final String id;
+  final String code;
+  final String shippingMethod;
+}
+
 class SupabaseService {
   SupabaseService._();
 
-  static SupabaseClient get client => Supabase.instance.client;
+  static SupabaseClient get client =>
+      maybeClient ??
+      (throw StateError(
+        'Supabase chua duoc khoi tao. Kiem tra file .env va qua trinh initialize.',
+      ));
 
-  static User? get currentUser => client.auth.currentUser;
+  static SupabaseClient? get maybeClient {
+    try {
+      return Supabase.instance.client;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static bool get isInitialized => maybeClient != null;
+
+  static User? get currentUser => maybeClient?.auth.currentUser;
 
   static bool get isConfigured {
     final url = dotenv.env['SUPABASE_URL']?.trim() ?? '';
@@ -38,7 +64,15 @@ class SupabaseService {
   // Lấy danh mục sản phẩm từ Supabase.
   static Future<List<CategoryItem>> fetchCategories() async {
     ensureConfigured();
-    final rows = await client.from('categories').select().order('title');
+    List<dynamic> rows;
+    try {
+      rows = await client.from('categories').select().order('title');
+    } on PostgrestException catch (error) {
+      if (error.code != '42703' && !error.message.contains('title')) {
+        rethrow;
+      }
+      rows = await client.from('categories').select().order('name');
+    }
     return rows
         .map<CategoryItem>(
           (row) => CategoryItem.fromMap(Map<String, dynamic>.from(row)),
@@ -66,19 +100,27 @@ class SupabaseService {
       );
       debugPrintStack(stackTrace: stackTrace);
       try {
+        final rows = await client
+            .from('products')
+            .select('*, categories(name)')
+            .order('name');
+        return rows
+            .map<Product>(
+              (row) => Product.fromMap(Map<String, dynamic>.from(row)),
+            )
+            .toList();
+      } on PostgrestException catch (nameJoinError, nameJoinStackTrace) {
+        debugPrint(
+          'SupabaseService.fetchProducts(name join) failed: '
+          'code=${nameJoinError.code}, message=${nameJoinError.message}, details=${nameJoinError.details}, hint=${nameJoinError.hint}',
+        );
+        debugPrintStack(stackTrace: nameJoinStackTrace);
         final rows = await client.from('products').select().order('name');
         return rows
             .map<Product>(
               (row) => Product.fromMap(Map<String, dynamic>.from(row)),
             )
             .toList();
-      } on PostgrestException catch (fallbackError, fallbackStackTrace) {
-        debugPrint(
-          'SupabaseService.fetchProducts(raw select) failed: '
-          'code=${fallbackError.code}, message=${fallbackError.message}, details=${fallbackError.details}, hint=${fallbackError.hint}',
-        );
-        debugPrintStack(stackTrace: fallbackStackTrace);
-        rethrow;
       }
     }
   }
@@ -86,12 +128,25 @@ class SupabaseService {
   // Lấy danh sách sản phẩm bán chạy để hiển thị ở Home.
   static Future<List<Product>> fetchBestSellers() async {
     ensureConfigured();
-    final rows = await client
-        .from('products')
-        .select('*, categories(title, name)')
-        .eq('is_bestseller', true)
-        .eq('is_active', true)
-        .order('name');
+    late final List<dynamic> rows;
+    try {
+      rows = await client
+          .from('products')
+          .select('*, categories(title, name)')
+          .eq('is_bestseller', true)
+          .eq('is_active', true)
+          .order('name');
+    } on PostgrestException catch (error) {
+      if (error.code != '42703' && !error.message.contains('title')) {
+        rethrow;
+      }
+      rows = await client
+          .from('products')
+          .select('*, categories(name)')
+          .eq('is_bestseller', true)
+          .eq('is_active', true)
+          .order('name');
+    }
     return rows
         .map<Product>((row) => Product.fromMap(Map<String, dynamic>.from(row)))
         .toList();
@@ -100,13 +155,27 @@ class SupabaseService {
   // Lấy một sản phẩm theo id, dùng cho banner điều hướng.
   static Future<Product?> fetchProductById(String id) async {
     ensureConfigured();
-    final row = await client
-        .from('products')
-        .select('*, categories(title, name)')
-        .eq('id', id)
-        .maybeSingle();
+    Map<String, dynamic>? row;
+    try {
+      final result = await client
+          .from('products')
+          .select('*, categories(title, name)')
+          .eq('id', id)
+          .maybeSingle();
+      row = result == null ? null : Map<String, dynamic>.from(result);
+    } on PostgrestException catch (error) {
+      if (error.code != '42703' && !error.message.contains('title')) {
+        rethrow;
+      }
+      final result = await client
+          .from('products')
+          .select('*, categories(name)')
+          .eq('id', id)
+          .maybeSingle();
+      row = result == null ? null : Map<String, dynamic>.from(result);
+    }
     if (row == null) return null;
-    return Product.fromMap(Map<String, dynamic>.from(row));
+    return Product.fromMap(row);
   }
 
   // Lấy profile của người dùng hiện tại.
@@ -368,7 +437,8 @@ class SupabaseService {
     Map<String, dynamic> row, {
     Map<String, dynamic>? product,
   }) {
-    final productMap = product ??
+    final productMap =
+        product ??
         (row['products'] is Map
             ? Map<String, dynamic>.from(row['products'] as Map)
             : null);
@@ -380,14 +450,18 @@ class SupabaseService {
       id: row['id']?.toString(),
       product: parsedProduct,
       quantity: quantity <= 0 ? 1 : quantity,
-      weight: (row['weight'] ??
-              (parsedProduct.weights.isEmpty ? '500g' : parsedProduct.weights.first))
-          .toString(),
-      grindType: (row['grind_type'] ??
-              (parsedProduct.grindOptions.isEmpty
-                  ? 'Xay pha phin'
-                  : parsedProduct.grindOptions.first))
-          .toString(),
+      weight:
+          (row['weight'] ??
+                  (parsedProduct.weights.isEmpty
+                      ? '500g'
+                      : parsedProduct.weights.first))
+              .toString(),
+      grindType:
+          (row['grind_type'] ??
+                  (parsedProduct.grindOptions.isEmpty
+                      ? 'Xay pha phin'
+                      : parsedProduct.grindOptions.first))
+              .toString(),
     );
   }
 
@@ -401,7 +475,9 @@ class SupabaseService {
     ensureConfigured();
     final user = currentUser;
     if (user == null) {
-      debugPrint('SupabaseService.fetchCurrentRole: currentUser=null -> customer');
+      debugPrint(
+        'SupabaseService.fetchCurrentRole: currentUser=null -> customer',
+      );
       return 'customer';
     }
 
@@ -449,10 +525,7 @@ class SupabaseService {
     Map<String, dynamic> values,
   ) async {
     ensureConfigured();
-    await client
-        .from('profiles')
-        .update(values)
-        .eq('id', id);
+    await client.from('profiles').update(values).eq('id', id);
   }
 
   // Lấy đơn hàng theo trạng thái của user hiện tại.
@@ -601,14 +674,17 @@ class SupabaseService {
           );
           debugPrintStack(stackTrace: stackTrace);
         } catch (error, stackTrace) {
-          debugPrint('fetchCustomerOrdersByTab($tab) order_items query failed: $error');
+          debugPrint(
+            'fetchCustomerOrdersByTab($tab) order_items query failed: $error',
+          );
           debugPrintStack(stackTrace: stackTrace);
         }
       }
 
       return rows.map((row) {
         final order = Map<String, dynamic>.from(row);
-        order['order_items'] = itemsByOrder[order['id']?.toString()] ?? const [];
+        order['order_items'] =
+            itemsByOrder[order['id']?.toString()] ?? const [];
         return order;
       }).toList();
     } on PostgrestException catch (error, stackTrace) {
@@ -655,27 +731,255 @@ class SupabaseService {
         .single();
 
     final orderId = order['id'].toString();
-    await client.from('order_items').insert(
-      items
-          .map(
-            (item) => {
-              'order_id': orderId,
-              'product_id': item.product.id,
-              'product_name': item.product.name,
-              'quantity': item.quantity,
-              'unit_price': item.unitPrice(isAgent: isAgent),
-              'line_total': item.lineTotal(isAgent: isAgent),
-              'weight': item.weight,
-              'grind_type': item.grindType,
-            },
-          )
-          .toList(),
-    );
+    await client
+        .from('order_items')
+        .insert(
+          items
+              .map(
+                (item) => {
+                  'order_id': orderId,
+                  'product_id': item.product.id,
+                  'product_name': item.product.name,
+                  'quantity': item.quantity,
+                  'unit_price': item.unitPrice(isAgent: isAgent),
+                  'line_total': item.lineTotal(isAgent: isAgent),
+                  'weight': item.weight,
+                  'grind_type': item.grindType,
+                },
+              )
+              .toList(),
+        );
 
     return orderId;
   }
 
   // Lấy danh sách địa chỉ giao hàng của user hiện tại.
+  static Future<CheckoutOrderResult> createCheckoutOrder({
+    required List<CartItem> items,
+    required String recipientName,
+    required String recipientPhone,
+    required String shippingAddress,
+    required String shippingMethod,
+    required int shippingFee,
+    required String paymentMethod,
+    required int subtotal,
+    required int discountAmount,
+    required int total,
+    required bool isAgent,
+    String? voucherCode,
+    String? note,
+  }) async {
+    ensureConfigured();
+    final user = currentUser;
+    if (user == null) {
+      throw const AuthException('Bạn cần đăng nhập để đặt hàng');
+    }
+    if (items.isEmpty) {
+      throw const AuthException('Giỏ hàng đang trống');
+    }
+
+    await _ensureEnoughStock(items);
+
+    final now = DateTime.now();
+    final nowIso = now.toIso8601String();
+    final orderCode = _generateOrderCode(now);
+    final orderPayload = <String, dynamic>{
+      'order_code': orderCode,
+      'user_id': user.id,
+      'status': 'Chờ duyệt',
+      'recipient_name': recipientName.trim(),
+      'recipient_phone': recipientPhone.trim(),
+      'shipping_address': shippingAddress.trim(),
+      'shipping_method': shippingMethod,
+      'shipping_fee': shippingFee,
+      'payment_method': paymentMethod,
+      'subtotal': subtotal,
+      'discount_amount': discountAmount,
+      'total': total,
+      'voucher_code': voucherCode,
+      'note': note?.trim().isEmpty == true ? null : note?.trim(),
+      'is_wholesale': isAgent,
+      'stock_checked_at': nowIso,
+      'created_at': nowIso,
+      'updated_at': nowIso,
+    }..removeWhere((key, value) => value == null);
+
+    final order = await _insertOrderWithFallback(orderPayload);
+    final orderId = order['id'].toString();
+    final savedOrderCode = (order['order_code'] ?? orderCode).toString();
+
+    await _insertOrderItemsWithFallback(
+      orderId: orderId,
+      items: items,
+      isAgent: isAgent,
+    );
+    await _decreaseProductStock(items);
+
+    return CheckoutOrderResult(
+      id: orderId,
+      code: savedOrderCode,
+      shippingMethod: shippingMethod,
+    );
+  }
+
+  static Future<void> _ensureEnoughStock(List<CartItem> items) async {
+    for (final item in items) {
+      final stock = await fetchProductStock(item.product.id);
+      if (stock <= 0) {
+        throw AuthException('Sản phẩm ${item.product.name} đã hết hàng');
+      }
+      if (item.quantity > stock) {
+        throw AuthException(
+          'Sản phẩm ${item.product.name} chỉ còn $stock trong kho',
+        );
+      }
+    }
+  }
+
+  static Future<Map<String, dynamic>> _insertOrderWithFallback(
+    Map<String, dynamic> payload,
+  ) async {
+    var nextPayload = Map<String, dynamic>.from(payload);
+    for (var attempt = 0; attempt < 16; attempt++) {
+      try {
+        final row = await client
+            .from('orders')
+            .insert(nextPayload)
+            .select()
+            .single();
+        return Map<String, dynamic>.from(row);
+      } on PostgrestException catch (error) {
+        final missing = _missingColumnName(error);
+        if (missing == null || !nextPayload.containsKey(missing)) rethrow;
+        nextPayload = Map<String, dynamic>.from(nextPayload)..remove(missing);
+      }
+    }
+
+    final row = await client.from('orders').insert(nextPayload).select().single();
+    return Map<String, dynamic>.from(row);
+  }
+
+  static Future<void> _insertOrderItemsWithFallback({
+    required String orderId,
+    required List<CartItem> items,
+    required bool isAgent,
+  }) async {
+    var rows = items.map((item) {
+      final unitPrice = item.unitPrice(isAgent: isAgent);
+      final lineTotal = unitPrice * item.quantity;
+      return <String, dynamic>{
+        'order_id': orderId,
+        'product_id': item.product.id,
+        'product_name': item.product.name,
+        'quantity': item.quantity,
+        'unit_price': unitPrice,
+        'line_total': lineTotal,
+        'subtotal': lineTotal,
+        'weight': item.weight,
+        'grind_type': item.grindType,
+      };
+    }).toList();
+
+    for (var attempt = 0; attempt < 16; attempt++) {
+      try {
+        await client.from('order_items').insert(rows);
+        return;
+      } on PostgrestException catch (error) {
+        final missing = _missingColumnName(error);
+        if (missing == null || rows.every((row) => !row.containsKey(missing))) {
+          rethrow;
+        }
+        rows = rows
+            .map((row) => Map<String, dynamic>.from(row)..remove(missing))
+            .toList();
+      }
+    }
+
+    await client.from('order_items').insert(rows);
+  }
+
+  static Future<void> _decreaseProductStock(List<CartItem> items) async {
+    for (final item in items) {
+      if (await _tryDecreaseStockRpc(item)) {
+        continue;
+      }
+
+      final stock = await fetchProductStock(item.product.id);
+      if (stock <= 0 || item.quantity > stock) {
+        throw AuthException(
+          'Sản phẩm ${item.product.name} không còn đủ hàng để đặt',
+        );
+      }
+      final nextStock = stock - item.quantity;
+      await _updateProductStockWithFallback(item.product.id, nextStock);
+    }
+  }
+
+  static Future<bool> _tryDecreaseStockRpc(CartItem item) async {
+    final attempts = [
+      {'product_id': item.product.id, 'amount': item.quantity},
+      {'p_product_id': item.product.id, 'p_quantity': item.quantity},
+      {'variant_id': item.product.id, 'amount': item.quantity},
+    ];
+
+    for (final params in attempts) {
+      try {
+        await client.rpc('decrease_stock', params: params);
+        return true;
+      } on PostgrestException catch (error) {
+        debugPrint(
+          'decrease_stock RPC fallback: code=${error.code} message=${error.message}',
+        );
+      }
+    }
+    return false;
+  }
+
+  static Future<void> _updateProductStockWithFallback(
+    String productId,
+    int nextStock,
+  ) async {
+    var payload = <String, dynamic>{
+      'stock': nextStock,
+      'is_active': nextStock > 0,
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+
+    for (var attempt = 0; attempt < 8; attempt++) {
+      try {
+        await client.from('products').update(payload).eq('id', productId);
+        return;
+      } on PostgrestException catch (error) {
+        final missing = _missingColumnName(error);
+        if (missing == null || !payload.containsKey(missing)) rethrow;
+        payload = Map<String, dynamic>.from(payload)..remove(missing);
+      }
+    }
+
+    await client.from('products').update(payload).eq('id', productId);
+  }
+
+  static String _generateOrderCode(DateTime now) {
+    final datePart =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+    final randomPart = (now.microsecondsSinceEpoch % 1000)
+        .toString()
+        .padLeft(3, '0');
+    return 'HT-$datePart-$randomPart';
+  }
+
+  static String? _missingColumnName(PostgrestException error) {
+    if (error.code != 'PGRST204' && error.code != '42703') return null;
+    final text = '${error.message} ${error.details} ${error.hint}';
+    final quoted = RegExp(r"'([^']+)'").firstMatch(text)?.group(1);
+    if (quoted != null && quoted.isNotEmpty) return quoted;
+    final column = RegExp(
+      r'column\s+"?([A-Za-z0-9_]+)"?',
+      caseSensitive: false,
+    ).firstMatch(text)?.group(1);
+    return column;
+  }
+
   static Future<List<AddressItem>> fetchAddresses() async {
     ensureConfigured();
     final user = currentUser;
@@ -708,7 +1012,8 @@ class SupabaseService {
     final payload = <String, dynamic>{
       ...address.toMap(),
       'user_id': user.id,
-      if (address.createdAt != null) 'created_at': address.createdAt!.toIso8601String(),
+      if (address.createdAt != null)
+        'created_at': address.createdAt!.toIso8601String(),
     };
 
     String savedId = address.id;
@@ -720,7 +1025,11 @@ class SupabaseService {
           .single();
       savedId = inserted['id'].toString();
     } else {
-      await client.from('addresses').update(payload).eq('id', savedId).eq('user_id', user.id);
+      await client
+          .from('addresses')
+          .update(payload)
+          .eq('id', savedId)
+          .eq('user_id', user.id);
     }
 
     if (address.isDefault) {

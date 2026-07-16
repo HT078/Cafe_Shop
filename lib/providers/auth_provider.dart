@@ -13,10 +13,10 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoading => _loading;
   String? get error => _error;
   bool get isAdmin => _role.trim().toLowerCase() == 'admin';
-  bool get isAgent =>
-      _profile?['is_agent'] == true || _profile?['agent_status'] == 'approved';
-  String? get agentStatus => _profile?['agent_status']?.toString();
-  String? get rejectReason => _profile?['reject_reason']?.toString();
+  bool get isAgent => _profile?['is_agent'] == true || agentStatus == 'approved';
+  String? get agentStatus => _normalizeAgentStatus(_profile?['agent_status']);
+  String? get rejectReason =>
+      agentStatus == 'rejected' ? _nonEmptyString(_profile?['reject_reason']) : null;
   String get fullName => (_profile?['full_name'] ?? '').toString();
   String get phone => (_profile?['phone'] ?? '').toString();
   String get email => (SupabaseService.currentUser?.email ?? '').toString();
@@ -60,5 +60,18 @@ class AuthProvider extends ChangeNotifier {
     _error = null;
     _loading = false;
     notifyListeners();
+  }
+
+  static String? _normalizeAgentStatus(dynamic value) {
+    final status = value?.toString().trim().toLowerCase();
+    return switch (status) {
+      'pending' || 'approved' || 'rejected' => status,
+      _ => null,
+    };
+  }
+
+  static String? _nonEmptyString(dynamic value) {
+    final text = value?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
   }
 }

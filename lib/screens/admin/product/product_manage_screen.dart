@@ -1,10 +1,11 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../../services/admin_service.dart';
 import '../../../theme/theme.dart';
+import '../../../utils/product_image_picker.dart';
 
 class ProductManageScreen extends StatefulWidget {
   const ProductManageScreen({super.key});
@@ -50,7 +51,8 @@ class _ProductManageScreenState extends State<ProductManageScreen> {
   Future<void> _openForm({Map<String, dynamic>? product}) async {
     await showDialog<void>(
       context: context,
-      builder: (_) => _ProductFormDialog(product: product, onSaved: _loadProducts),
+      builder: (_) =>
+          _ProductFormDialog(product: product, onSaved: _loadProducts),
     );
   }
 
@@ -69,10 +71,35 @@ class _ProductManageScreenState extends State<ProductManageScreen> {
     return (product['image_url'] ?? product['imageUrl'] ?? '').toString();
   }
 
+  int _productPrice(Map<String, dynamic> product) {
+    final price = _asInt(product['price']);
+    if (price > 0) return price;
+    for (final key in const ['price_500g', 'price_250g', 'price_1kg']) {
+      final legacyPrice = _asInt(product[key]);
+      if (legacyPrice > 0) return legacyPrice;
+    }
+    final prices = product['prices_by_weight'];
+    if (prices is Map) {
+      for (final value in prices.values) {
+        final mappedPrice = _asInt(value);
+        if (mappedPrice > 0) return mappedPrice;
+      }
+    }
+    return 0;
+  }
+
+  static int _asInt(dynamic value) {
+    if (value is num) return value.round();
+    return int.tryParse(
+          value?.toString().replaceAll('.', '').replaceAll(',', '') ?? '',
+        ) ??
+        0;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.charColor,
+      backgroundColor: AppTheme.pageColor,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openForm(),
         icon: const Icon(Icons.add_rounded),
@@ -80,12 +107,48 @@ class _ProductManageScreenState extends State<ProductManageScreen> {
         backgroundColor: AppTheme.goldColor,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppTheme.goldColor))
+          ? const Center(
+              child: CircularProgressIndicator(color: AppTheme.goldColor),
+            )
           : _error != null
           ? Center(
               child: Padding(
                 padding: const EdgeInsets.all(20),
-                child: Text(_error!, style: const TextStyle(color: Colors.white70)),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(color: AppTheme.mutedColor),
+                ),
+              ),
+            )
+          : _products.isEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.inventory_2_outlined,
+                      size: 48,
+                      color: AppTheme.mutedColor,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Chưa có sản phẩm nào',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Bấm "Thêm sản phẩm" để tạo sản phẩm đầu tiên.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.mutedColor,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             )
           : ListView.separated(
@@ -114,19 +177,20 @@ class _ProductManageScreenState extends State<ProductManageScreen> {
                             : Image.network(
                                 imageUrl,
                                 fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => Container(
-                                  color: AppTheme.surfaceAltColor,
-                                  child: const Icon(
-                                    Icons.coffee_rounded,
-                                    color: AppTheme.goldColor,
-                                  ),
-                                ),
+                                errorBuilder: (context, error, stackTrace) =>
+                                    Container(
+                                      color: AppTheme.surfaceAltColor,
+                                      child: const Icon(
+                                        Icons.coffee_rounded,
+                                        color: AppTheme.goldColor,
+                                      ),
+                                    ),
                               ),
                       ),
                     ),
                     title: Text(product['name']?.toString() ?? 'Sản phẩm'),
                     subtitle: Text(
-                      '${_money(product['price'])} • Tồn ${product['stock'] ?? 0} • ${product['category'] ?? 'Chưa phân loại'}',
+                      '${_money(_productPrice(product))} • Tồn ${product['stock'] ?? 0} • ${product['category'] ?? 'Chưa phân loại'}',
                     ),
                     trailing: Wrap(
                       spacing: 4,
@@ -139,16 +203,17 @@ class _ProductManageScreenState extends State<ProductManageScreen> {
                           onPressed: () async {
                             final id = product['id']?.toString();
                             if (id == null) return;
-                            await AdminService.saveProduct(
-                              {
-                                ...Map<String, dynamic>.from(product),
-                                'is_active': !isActive,
-                              },
-                              id: id,
-                            );
+                            await AdminService.saveProduct({
+                              ...Map<String, dynamic>.from(product),
+                              'is_active': !isActive,
+                            }, id: id);
                             await _loadProducts();
                           },
-                          icon: Icon(isActive ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                          icon: Icon(
+                            isActive
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
                         ),
                       ],
                     ),
@@ -188,6 +253,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog> {
   DateTime? _saleStart;
   DateTime? _saleEnd;
   Uint8List? _pickedImage;
+  String? _imageUploadError;
   bool _isUploadingImage = false;
   bool _isSaving = false;
 
@@ -195,22 +261,51 @@ class _ProductFormDialogState extends State<_ProductFormDialog> {
   void initState() {
     super.initState();
     final product = widget.product;
-    _nameController = TextEditingController(text: product?['name']?.toString() ?? '');
-    _descriptionController = TextEditingController(text: product?['description']?.toString() ?? '');
-    _categoryController = TextEditingController(text: product?['category']?.toString() ?? '');
-    _priceController = TextEditingController(text: (product?['price'] ?? 0).toString());
-    _stockController = TextEditingController(text: (product?['stock'] ?? 0).toString());
-    _thresholdController = TextEditingController(text: (product?['low_stock_threshold'] ?? 5).toString());
-    _badgeController = TextEditingController(text: product?['badge']?.toString() ?? 'Mới');
-    _weightLabelController = TextEditingController(text: product?['weight_label']?.toString() ?? '500g');
-    _weightsController = TextEditingController(text: (product?['weights'] is List ? (product!['weights'] as List).join(',') : '500g'));
-    _salePercentController = TextEditingController(text: (product?['sale_percent'] ?? '').toString());
-    _salePriceController = TextEditingController(text: (product?['sale_price'] ?? '').toString());
+    _nameController = TextEditingController(
+      text: product?['name']?.toString() ?? '',
+    );
+    _descriptionController = TextEditingController(
+      text: product?['description']?.toString() ?? '',
+    );
+    _categoryController = TextEditingController(
+      text: product?['category']?.toString() ?? '',
+    );
+    _priceController = TextEditingController(
+      text: _formatVndInput(_storedProductPrice(product)),
+    );
+    _stockController = TextEditingController(
+      text: (product?['stock'] ?? 0).toString(),
+    );
+    _thresholdController = TextEditingController(
+      text: (product?['low_stock_threshold'] ?? 5).toString(),
+    );
+    _badgeController = TextEditingController(
+      text: product?['badge']?.toString() ?? 'Mới',
+    );
+    _weightLabelController = TextEditingController(
+      text: product?['weight_label']?.toString() ?? '500g',
+    );
+    _weightsController = TextEditingController(
+      text: (product?['weights'] is List
+          ? (product!['weights'] as List).join(',')
+          : '500g'),
+    );
+    _salePercentController = TextEditingController(
+      text: (product?['sale_percent'] ?? '').toString(),
+    );
+    _salePriceController = TextEditingController(
+      text: _formatVndInput(product?['sale_price'], emptyForZero: true),
+    );
     _imageUrlController = TextEditingController(text: _firstImageUrl(product));
-    _isBestSeller = product?['is_best_seller'] == true || product?['isBestSeller'] == true;
+    _isBestSeller =
+        product?['is_best_seller'] == true || product?['isBestSeller'] == true;
     _isActive = product?['is_active'] != false;
-    _saleStart = product?['sale_start'] != null ? DateTime.tryParse(product!['sale_start'].toString()) : null;
-    _saleEnd = product?['sale_end'] != null ? DateTime.tryParse(product!['sale_end'].toString()) : null;
+    _saleStart = product?['sale_start'] != null
+        ? DateTime.tryParse(product!['sale_start'].toString())
+        : null;
+    _saleEnd = product?['sale_end'] != null
+        ? DateTime.tryParse(product!['sale_end'].toString())
+        : null;
   }
 
   @override
@@ -239,11 +334,99 @@ class _ProductFormDialogState extends State<_ProductFormDialog> {
     return (product['image_url'] ?? product['imageUrl'] ?? '').toString();
   }
 
-  Future<void> _pickImage() async {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Chức năng chọn file tạm thời chưa khả dụng')),
+  static String _formatVndInput(dynamic value, {bool emptyForZero = false}) {
+    final number = value is num
+        ? value.round()
+        : int.tryParse(value?.toString() ?? '') ?? 0;
+    if (emptyForZero && number == 0) return '';
+    return _formatVnd(number);
+  }
+
+  static int _storedProductPrice(Map<String, dynamic>? product) {
+    if (product == null) return 0;
+    final direct = _parseVnd(product['price']?.toString() ?? '');
+    if (direct > 0) return direct;
+    for (final key in const ['price_500g', 'price_250g', 'price_1kg']) {
+      final legacy = _parseVnd(product[key]?.toString() ?? '');
+      if (legacy > 0) return legacy;
+    }
+    final prices = product['prices_by_weight'];
+    if (prices is Map) {
+      for (final value in prices.values) {
+        final mapped = _parseVnd(value.toString());
+        if (mapped > 0) return mapped;
+      }
+    }
+    return 0;
+  }
+
+  static String _formatVnd(int value) {
+    return value.toString().replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (_) => '.',
     );
+  }
+
+  static int _parseVnd(String value) {
+    return int.tryParse(value.replaceAll('.', '').replaceAll(',', '').trim()) ??
+        0;
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    setState(() {
+      _isUploadingImage = true;
+      _imageUploadError = null;
+    });
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final image = await pickProductImage(source: source);
+      if (!mounted || image == null) return;
+
+      setState(() => _pickedImage = image.bytes);
+      final imageUrl = await AdminService.uploadProductImage(
+        bytes: image.bytes,
+        fileName: image.fileName,
+      );
+      if (imageUrl == null || imageUrl.isEmpty) {
+        throw StateError('Supabase không trả về public URL của ảnh');
+      }
+      if (!mounted) return;
+      setState(() {
+        _imageUrlController.text = imageUrl;
+        _imageUploadError = null;
+      });
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Đã tải ảnh sản phẩm')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      final message = _friendlyImageError(error);
+      setState(() => _imageUploadError = message);
+      messenger.showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: AppTheme.blazeColor),
+      );
+    } finally {
+      if (mounted) setState(() => _isUploadingImage = false);
+    }
+  }
+
+  String _friendlyImageError(Object error) {
+    final text = error.toString().replaceFirst('Exception: ', '');
+    final lower = text.toLowerCase();
+    if (lower.contains('row-level security') ||
+        lower.contains('not authorized') ||
+        lower.contains('unauthorized') ||
+        lower.contains('403') ||
+        lower.contains('42501')) {
+      return 'Tài khoản chưa được policy Storage products nhận là admin. Hãy chạy lại SQL policy products trong Supabase.';
+    }
+    if (text.toLowerCase().contains('permission')) {
+      return 'Không có quyền đọc ảnh hoặc mở camera. Hãy cấp quyền rồi thử lại.';
+    }
+    if (text.contains('bucket') || text.contains('products')) {
+      return 'Không upload được ảnh: cần tạo bucket products và policy admin trong Supabase.';
+    }
+    return 'Không upload được ảnh sản phẩm: $text';
   }
 
   Future<void> _pickDate(bool isStart) async {
@@ -267,28 +450,41 @@ class _ProductFormDialogState extends State<_ProductFormDialog> {
   Future<void> _save() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tên sản phẩm là bắt buộc')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Tên sản phẩm là bắt buộc')));
       return;
     }
 
     setState(() => _isSaving = true);
     try {
+      final category = _categoryController.text.trim().isEmpty
+          ? 'Chưa phân loại'
+          : _categoryController.text.trim();
+      final enteredPrice = _parseVnd(_priceController.text);
       final payload = <String, dynamic>{
         'name': name,
         'description': _descriptionController.text.trim(),
-        'category': _categoryController.text.trim(),
-        'price': int.tryParse(_priceController.text) ?? 0,
+        'category': category,
+        'price': enteredPrice,
+        // Keep compatibility with the older Supabase products schema.
+        'price_250g': enteredPrice,
+        'price_500g': enteredPrice,
+        'price_1kg': enteredPrice,
         'stock': int.tryParse(_stockController.text) ?? 0,
         'low_stock_threshold': int.tryParse(_thresholdController.text) ?? 5,
         'badge': _badgeController.text.trim(),
         'weight_label': _weightLabelController.text.trim(),
-        'weights': _weightsController.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
+        'weights': _weightsController.text
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList(),
         'grind_options': ['Xay pha phin'],
         'is_best_seller': _isBestSeller,
-        'is_active': _isActive && (int.tryParse(_stockController.text) ?? 0) > 0,
-        'prices_by_weight': {
-          '500g': int.tryParse(_priceController.text) ?? 0,
-        },
+        'is_active':
+            _isActive && (int.tryParse(_stockController.text) ?? 0) > 0,
+        'prices_by_weight': {'500g': enteredPrice},
       };
 
       final imageUrl = _imageUrlController.text.trim();
@@ -300,7 +496,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog> {
         payload['sale_percent'] = int.tryParse(_salePercentController.text);
       }
       if (_salePriceController.text.trim().isNotEmpty) {
-        payload['sale_price'] = int.tryParse(_salePriceController.text);
+        payload['sale_price'] = _parseVnd(_salePriceController.text);
       }
       if (_saleStart != null) {
         payload['sale_start'] = _saleStart!.toIso8601String();
@@ -309,13 +505,18 @@ class _ProductFormDialogState extends State<_ProductFormDialog> {
         payload['sale_end'] = _saleEnd!.toIso8601String();
       }
 
-      await AdminService.saveProduct(payload, id: widget.product?['id']?.toString());
+      await AdminService.saveProduct(
+        payload,
+        id: widget.product?['id']?.toString(),
+      );
       if (!mounted) return;
       Navigator.of(context).pop();
       await widget.onSaved();
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -324,7 +525,9 @@ class _ProductFormDialogState extends State<_ProductFormDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.product == null ? 'Thêm sản phẩm' : 'Chỉnh sửa sản phẩm'),
+      title: Text(
+        widget.product == null ? 'Thêm sản phẩm' : 'Chỉnh sửa sản phẩm',
+      ),
       content: SizedBox(
         width: 520,
         child: SingleChildScrollView(
@@ -337,34 +540,65 @@ class _ProductFormDialogState extends State<_ProductFormDialog> {
                 imageUrl: _imageUrlController.text.trim(),
                 pickedImage: _pickedImage,
                 isUploading: _isUploadingImage,
-                onUpload: _pickImage,
-              ),
-              _field(
-                'Ảnh sản phẩm URL',
-                controller: _imageUrlController,
+                errorText: _imageUploadError,
+                onPickGallery: () => _pickImage(ImageSource.gallery),
+                onPickCamera: () => _pickImage(ImageSource.camera),
               ),
               _field('Danh mục', controller: _categoryController),
-              _field('Giá bán', controller: _priceController, keyboardType: TextInputType.number),
-              _field('Tồn kho', controller: _stockController, keyboardType: TextInputType.number),
-              _field('Ngưỡng cảnh báo', controller: _thresholdController, keyboardType: TextInputType.number),
+              _field(
+                'Giá bán',
+                controller: _priceController,
+                keyboardType: TextInputType.number,
+                inputFormatters: const [_VietnameseMoneyFormatter()],
+              ),
+              _field(
+                'Tồn kho',
+                controller: _stockController,
+                keyboardType: TextInputType.number,
+              ),
+              _field(
+                'Ngưỡng cảnh báo',
+                controller: _thresholdController,
+                keyboardType: TextInputType.number,
+              ),
               _field('Badge', controller: _badgeController),
               _field('Nhãn trọng lượng', controller: _weightLabelController),
-              _field('Trọng lượng (cách nhau bằng dấu phẩy)', controller: _weightsController),
-              _field('Giảm giá %', controller: _salePercentController, keyboardType: TextInputType.number),
-              _field('Giá khuyến mãi', controller: _salePriceController, keyboardType: TextInputType.number),
+              _field(
+                'Trọng lượng (cách nhau bằng dấu phẩy)',
+                controller: _weightsController,
+              ),
+              _field(
+                'Giảm giá %',
+                controller: _salePercentController,
+                keyboardType: TextInputType.number,
+              ),
+              _field(
+                'Giá khuyến mãi',
+                controller: _salePriceController,
+                keyboardType: TextInputType.number,
+                inputFormatters: const [_VietnameseMoneyFormatter()],
+              ),
               Row(
                 children: [
                   Expanded(
                     child: ListTile(
                       title: const Text('Bắt đầu khuyến mãi'),
-                      subtitle: Text(_saleStart == null ? 'Chưa chọn' : DateFormat('dd/MM/yyyy').format(_saleStart!)),
+                      subtitle: Text(
+                        _saleStart == null
+                            ? 'Chưa chọn'
+                            : DateFormat('dd/MM/yyyy').format(_saleStart!),
+                      ),
                       onTap: () => _pickDate(true),
                     ),
                   ),
                   Expanded(
                     child: ListTile(
                       title: const Text('Kết thúc khuyến mãi'),
-                      subtitle: Text(_saleEnd == null ? 'Chưa chọn' : DateFormat('dd/MM/yyyy').format(_saleEnd!)),
+                      subtitle: Text(
+                        _saleEnd == null
+                            ? 'Chưa chọn'
+                            : DateFormat('dd/MM/yyyy').format(_saleEnd!),
+                      ),
                       onTap: () => _pickDate(false),
                     ),
                   ),
@@ -385,7 +619,10 @@ class _ProductFormDialogState extends State<_ProductFormDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Huỷ')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Huỷ'),
+        ),
         FilledButton(
           onPressed: _isSaving || _isUploadingImage ? null : _save,
           child: Text(_isSaving ? 'Đang lưu...' : 'Lưu'),
@@ -396,18 +633,41 @@ class _ProductFormDialogState extends State<_ProductFormDialog> {
 
   Widget _field(
     String label, {
-      required TextEditingController controller,
-      int maxLines = 1,
-      TextInputType? keyboardType,
-    }) {
+    required TextEditingController controller,
+    int maxLines = 1,
+    TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: TextField(
         controller: controller,
         maxLines: maxLines,
         keyboardType: keyboardType,
+        inputFormatters: inputFormatters,
         decoration: InputDecoration(labelText: label),
       ),
+    );
+  }
+}
+
+class _VietnameseMoneyFormatter extends TextInputFormatter {
+  const _VietnameseMoneyFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return const TextEditingValue();
+    final formatted = digits.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (_) => '.',
+    );
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
     );
   }
 }
@@ -417,13 +677,17 @@ class _ImagePickerField extends StatelessWidget {
     required this.imageUrl,
     required this.pickedImage,
     required this.isUploading,
-    required this.onUpload,
+    required this.errorText,
+    required this.onPickGallery,
+    required this.onPickCamera,
   });
 
   final String imageUrl;
   final Uint8List? pickedImage;
   final bool isUploading;
-  final VoidCallback onUpload;
+  final String? errorText;
+  final VoidCallback onPickGallery;
+  final VoidCallback onPickCamera;
 
   @override
   Widget build(BuildContext context) {
@@ -434,35 +698,55 @@ class _ImagePickerField extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(14),
-            child: SizedBox(
-              width: 92,
-              height: 92,
-              child: _preview(),
-            ),
+            child: SizedBox(width: 92, height: 92, child: _preview()),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ElevatedButton.icon(
-                  onPressed: isUploading ? null : onUpload,
-                  icon: isUploading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.upload_file_outlined),
-                  label: Text(isUploading ? 'Đang tải ảnh...' : 'Upload ảnh sản phẩm'),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: isUploading ? null : onPickGallery,
+                        icon: isUploading
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.photo_library_outlined),
+                        label: Text(isUploading ? 'Đang tải...' : 'Thư viện'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filledTonal(
+                      tooltip: 'Chụp bằng camera',
+                      onPressed: isUploading ? null : onPickCamera,
+                      icon: const Icon(Icons.photo_camera_outlined),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Ảnh sẽ được lưu vào Supabase Storage bucket product-images, sau đó URL được lưu trong products.image_urls.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppTheme.mutedColor,
-                      ),
+                  'Ảnh sẽ được lưu vào Supabase Storage bucket products, sau đó URL được lưu trong products.image_urls.',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.mutedColor),
                 ),
+                if (errorText != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    errorText!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.blazeColor,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

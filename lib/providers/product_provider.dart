@@ -33,7 +33,8 @@ class ProductProvider extends ChangeNotifier {
 
   bool get hasLoadError => _errorMessage != null;
 
-  bool get isCatalogEmpty => _hasLoaded && _errorMessage == null && products.isEmpty;
+  bool get isCatalogEmpty =>
+      _hasLoaded && _errorMessage == null && products.isEmpty;
 
   String? get errorMessage => _errorMessage;
 
@@ -50,7 +51,9 @@ class ProductProvider extends ChangeNotifier {
       try {
         _categories = await SupabaseService.fetchCategories();
         if (_categories.isEmpty) {
-          debugPrint('ProductProvider.loadCatalog(categories): query succeeded but returned 0 rows');
+          debugPrint(
+            'ProductProvider.loadCatalog(categories): query succeeded but returned 0 rows',
+          );
         }
       } on Object catch (error, stackTrace) {
         _logLoadError('categories', error, stackTrace);
@@ -60,8 +63,14 @@ class ProductProvider extends ChangeNotifier {
 
       try {
         _products = await SupabaseService.fetchProducts();
+        _categories = _mergeCategories(
+          _categories,
+          _categoriesFromProducts(_products),
+        );
         if (products.isEmpty) {
-          debugPrint('ProductProvider.loadCatalog(products): query succeeded but no active products available');
+          debugPrint(
+            'ProductProvider.loadCatalog(products): query succeeded but no active products available',
+          );
         }
       } on Object catch (error, stackTrace) {
         _logLoadError('products', error, stackTrace);
@@ -71,7 +80,9 @@ class ProductProvider extends ChangeNotifier {
     } finally {
       _hasLoaded = true;
       if (_errorMessage == null && products.isEmpty) {
-        debugPrint('ProductProvider.loadCatalog: catalog is empty after successful query');
+        debugPrint(
+          'ProductProvider.loadCatalog: catalog is empty after successful query',
+        );
       }
       _isLoading = false;
       notifyListeners();
@@ -94,6 +105,36 @@ class ProductProvider extends ChangeNotifier {
     debugPrintStack(stackTrace: stackTrace);
   }
 
+  List<CategoryItem> _categoriesFromProducts(List<Product> products) {
+    final titles = <String>{};
+    for (final product in products) {
+      final title = product.category.trim();
+      if (title.isNotEmpty) titles.add(title);
+    }
+    final sortedTitles = titles.toList()..sort();
+    return sortedTitles.map((title) {
+      return CategoryItem.fromMap({'title': title});
+    }).toList();
+  }
+
+  List<CategoryItem> _mergeCategories(
+    List<CategoryItem> storedCategories,
+    List<CategoryItem> productCategories,
+  ) {
+    final merged = <CategoryItem>[...storedCategories];
+    final knownKeys = storedCategories
+        .map((category) => _categoryKey(category.title))
+        .toSet();
+
+    for (final category in productCategories) {
+      if (knownKeys.add(_categoryKey(category.title))) {
+        merged.add(category);
+      }
+    }
+
+    return merged;
+  }
+
   List<Product> byCategory(
     String category, {
     ProductSortOption sort = ProductSortOption.bestSeller,
@@ -101,8 +142,9 @@ class ProductProvider extends ChangeNotifier {
     bool isAgent = false,
   }) {
     final normalizedQuery = query.trim().toLowerCase();
+    final categoryKey = _categoryKey(category);
     final filtered = products.where((product) {
-      final matchesCategory = product.category == category;
+      final matchesCategory = _categoryKey(product.category) == categoryKey;
       final matchesQuery =
           normalizedQuery.isEmpty ||
           product.name.toLowerCase().contains(normalizedQuery) ||
@@ -117,9 +159,19 @@ class ProductProvider extends ChangeNotifier {
           return a.isBestSeller ? -1 : 1;
         });
       case ProductSortOption.priceAsc:
-        filtered.sort((a, b) => _effectivePrice(a, isAgent).compareTo(_effectivePrice(b, isAgent)));
+        filtered.sort(
+          (a, b) => _effectivePrice(
+            a,
+            isAgent,
+          ).compareTo(_effectivePrice(b, isAgent)),
+        );
       case ProductSortOption.priceDesc:
-        filtered.sort((a, b) => _effectivePrice(b, isAgent).compareTo(_effectivePrice(a, isAgent)));
+        filtered.sort(
+          (a, b) => _effectivePrice(
+            b,
+            isAgent,
+          ).compareTo(_effectivePrice(a, isAgent)),
+        );
     }
 
     return filtered;
@@ -128,5 +180,16 @@ class ProductProvider extends ChangeNotifier {
   int _effectivePrice(Product product, bool isAgent) {
     final weight = product.weights.isNotEmpty ? product.weights.first : '500g';
     return product.priceFor(weight, isAgent: isAgent);
+  }
+
+  String _categoryKey(String value) {
+    final normalized = value.trim().toLowerCase().replaceAll(
+      RegExp(r'\s+'),
+      ' ',
+    );
+    if (normalized == 'chua phan loai' || normalized == 'chưa phân loại') {
+      return 'chua phan loai';
+    }
+    return normalized;
   }
 }

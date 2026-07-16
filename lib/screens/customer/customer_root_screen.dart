@@ -1,27 +1,34 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/cart_provider.dart';
 import '../../theme/theme.dart';
 import '../../widgets/customer/chat_floating_button.dart';
-import 'cart_screen.dart';
-import 'category_screen.dart';
+import 'account/profile_screen.dart';
+import 'cart/cart_screen.dart';
+import 'catalog/category_screen.dart';
 import 'home/home_screen.dart';
-import 'profile_screen.dart';
 
 class CustomerRootScreen extends StatefulWidget {
-  const CustomerRootScreen({super.key});
+  const CustomerRootScreen({super.key, this.initialIndex = 0});
+
+  final int initialIndex;
 
   @override
   State<CustomerRootScreen> createState() => _CustomerRootScreenState();
 }
 
 class _CustomerRootScreenState extends State<CustomerRootScreen> {
-  int _currentIndex = 0;
+  late int _currentIndex;
+  String? _selectedCategoryTitle;
+  int _categorySelectionVersion = 0;
 
   @override
   void initState() {
     super.initState();
+    _currentIndex = widget.initialIndex.clamp(0, 3).toInt();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       context.read<CartProvider>().syncWithCurrentUser();
@@ -30,16 +37,35 @@ class _CustomerRootScreenState extends State<CustomerRootScreen> {
 
   void _selectTab(int index) {
     setState(() => _currentIndex = index);
+    if (index == 2) {
+      unawaited(context.read<CartProvider>().reloadFromSupabase());
+    }
+  }
+
+  void _selectCategory(String title) {
+    setState(() {
+      _selectedCategoryTitle = title;
+      _categorySelectionVersion += 1;
+      _currentIndex = 1;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.pageColor,
       body: IndexedStack(
         index: _currentIndex,
         children: [
-          HomeScreen(onTabSelected: _selectTab),
-          CategoryScreen(onCartTap: () => _selectTab(2)),
+          HomeScreen(
+            onTabSelected: _selectTab,
+            onCategorySelected: _selectCategory,
+          ),
+          CategoryScreen(
+            key: ValueKey(_categorySelectionVersion),
+            initialCategoryTitle: _selectedCategoryTitle,
+            onCartTap: () => _selectTab(2),
+          ),
           CartScreen(onExploreProducts: () => _selectTab(0)),
           const ProfileScreen(),
         ],

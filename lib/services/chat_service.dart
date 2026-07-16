@@ -72,12 +72,13 @@ class ChatService {
         .from('messages')
         .select()
         .eq('conversation_id', conversationId)
-        .order('created_at');
-    return rows
-        .map<ChatMessage>(
-          (row) => ChatMessage.fromMap(Map<String, dynamic>.from(row)),
-        )
-        .toList();
+        .order('created_at')
+        .order('id');
+    return normalizeChatMessages(
+      rows.map<ChatMessage>(
+        (row) => ChatMessage.fromMap(Map<String, dynamic>.from(row)),
+      ),
+    );
   }
 
   // Khách mở chat thì reset số tin chưa đọc của khách.
@@ -298,6 +299,24 @@ class ChatService {
     required String? unreadColumn,
     Map<String, dynamic> extra = const {},
   }) async {
+    try {
+      await _client.rpc(
+        'bump_chat_conversation',
+        params: {
+          'p_conversation_id': conversationId,
+          'p_last_message': lastMessage,
+          'p_unread_for': unreadColumn,
+          'p_status': extra['status'],
+          'p_reset_admin_unread': extra['unread_by_admin'] == 0,
+        },
+      );
+      return;
+    } on PostgrestException catch (error) {
+      // The fallback keeps the app usable until supabase/chat.sql is run.
+      if (error.code != '42883') rethrow;
+      debugPrint('bump_chat_conversation RPC is not installed yet');
+    }
+
     final row = await _client
         .from('conversations')
         .select('unread_by_user,unread_by_admin')
