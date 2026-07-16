@@ -98,6 +98,32 @@ class ChatMessage {
   }
 }
 
+int compareChatMessages(ChatMessage left, ChatMessage right) {
+  final leftDate = left.createdAt;
+  final rightDate = right.createdAt;
+  if (leftDate != null && rightDate != null) {
+    final dateComparison = leftDate.compareTo(rightDate);
+    if (dateComparison != 0) return dateComparison;
+  } else if (leftDate != null) {
+    return 1;
+  } else if (rightDate != null) {
+    return -1;
+  }
+  return left.id.compareTo(right.id);
+}
+
+List<ChatMessage> normalizeChatMessages(Iterable<ChatMessage> messages) {
+  final messagesById = <String, ChatMessage>{};
+  for (final message in messages) {
+    if (message.id.isNotEmpty) {
+      messagesById[message.id] = message;
+    }
+  }
+
+  final normalized = messagesById.values.toList()..sort(compareChatMessages);
+  return List<ChatMessage>.unmodifiable(normalized);
+}
+
 int _asInt(dynamic value) {
   if (value is int) return value;
   if (value is num) return value.round();

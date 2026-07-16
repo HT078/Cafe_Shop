@@ -78,7 +78,10 @@ class CartProvider extends ChangeNotifier {
       _syncedUserId = null;
       return;
     }
-    if (!force && _syncedUserId == user.id && _items.every((item) => item.id != null)) {
+    if (!force &&
+        _syncedUserId == user.id &&
+        _items.isNotEmpty &&
+        _items.every((item) => item.id != null)) {
       return;
     }
 
@@ -317,6 +320,12 @@ class CartProvider extends ChangeNotifier {
     final couponId = _coupon?.id;
     if (couponId == null || couponId.isEmpty) return;
     await SupabaseService.incrementCouponUsage(couponId);
+  }
+
+  void removeDiscountCode() {
+    _coupon = null;
+    _discountMessage = null;
+    notifyListeners();
   }
 
   Future<void> clearCart() async {

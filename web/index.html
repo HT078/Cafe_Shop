@@ -41,6 +41,30 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
-  <script src="flutter_bootstrap.js" async></script>
+  <script>
+    // Clear old Flutter web workers left by previous local builds.
+    (async () => {
+      const isLocalHost =
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1';
+      if (isLocalHost && 'serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        const removed = await Promise.all(
+          registrations.map((registration) => registration.unregister()),
+        );
+        await Promise.all(
+          (await caches.keys()).map((cacheName) => caches.delete(cacheName)),
+        );
+        if (removed.some(Boolean)) {
+          window.location.reload();
+          return;
+        }
+      }
+
+      const bootstrap = document.createElement('script');
+      bootstrap.src = 'flutter_bootstrap.js';
+      document.body.appendChild(bootstrap);
+    })();
+  </script>
 </body>
 </html>

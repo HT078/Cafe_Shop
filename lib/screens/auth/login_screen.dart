@@ -97,7 +97,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.charColor,
+      backgroundColor: AppTheme.pageColor,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
@@ -146,9 +146,9 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 12),
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
-                backgroundColor: AppTheme.creamColor,
+                backgroundColor: AppTheme.surfaceColor,
                 foregroundColor: AppTheme.charColor,
-                side: const BorderSide(color: AppTheme.creamColor),
+                side: const BorderSide(color: AppTheme.lineColor),
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
@@ -187,21 +187,13 @@ class _AuthLogo extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const BrandLogo(size: 88, borderRadius: 24),
-        const SizedBox(height: 14),
+        const BrandLogo(size: 104),
+        const SizedBox(height: 12),
         Text(
           'Cà Phê Hải Tín',
           style: Theme.of(
             context,
           ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
-        ),
-        Text(
-          'Phượng Hoàng Lửa',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: AppTheme.goldColor,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.2,
-          ),
         ),
       ],
     );

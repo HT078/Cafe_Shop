@@ -1,39 +1,35 @@
-import 'dart:async';
-
-import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/banner_model.dart';
 import '../../../models/product_model.dart';
 import '../../../providers/auth_provider.dart';
-import '../../../providers/banner_provider.dart';
 import '../../../providers/cart_provider.dart';
 import '../../../providers/product_provider.dart';
-import '../../../screens/customer/category_screen.dart';
+import '../../../screens/customer/catalog/category_screen.dart';
 import '../../../screens/auth/login_screen.dart';
 import '../../../screens/customer/product/product_detail_screen.dart';
 import '../../../services/supabase_service.dart';
 import '../../../theme/theme.dart';
 import '../../../utils/open_external_url.dart';
+import '../../../widgets/customer/banner_slider.dart';
 import '../../../widgets/customer/cart_badge.dart';
 import '../../../widgets/customer/brand_logo.dart';
 import '../../../widgets/customer/coffee_search_bar.dart';
-import '../../../widgets/product_card.dart';
+import '../../../widgets/customer/product_card.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, this.onTabSelected});
+  const HomeScreen({super.key, this.onTabSelected, this.onCategorySelected});
 
   final ValueChanged<int>? onTabSelected;
+  final ValueChanged<String>? onCategorySelected;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentBanner = 0;
   bool _hideGuestBanner = false;
-  late final Timer _timer;
   late Future<List<Product>> _bestSellersFuture;
 
   @override
@@ -43,17 +39,11 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       context.read<ProductProvider>().loadCatalog();
-      context.read<BannerProvider>().loadBanners();
-    });
-    _timer = Timer.periodic(const Duration(seconds: 4), (_) {
-      if (!mounted) return;
-      setState(() => _currentBanner++);
     });
   }
 
   @override
   void dispose() {
-    _timer.cancel();
     super.dispose();
   }
 
@@ -67,7 +57,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (type == 'product') {
-      final product = await SupabaseService.fetchProductById(banner.linkValue.trim());
+      final product = await SupabaseService.fetchProductById(
+        banner.linkValue.trim(),
+      );
       if (!mounted) return;
       if (product == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -76,7 +68,9 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
       Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => ProductDetailScreen(product: product)),
+        MaterialPageRoute(
+          builder: (_) => ProductDetailScreen(product: product),
+        ),
       );
       return;
     }
@@ -113,10 +107,26 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _openQuickCategory(String title) {
+    final onCategorySelected = widget.onCategorySelected;
+    if (onCategorySelected != null) {
+      onCategorySelected(title);
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CategoryScreen(
+          initialCategoryTitle: title,
+          onCartTap: () => widget.onTabSelected?.call(2),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final catalog = context.watch<ProductProvider>();
-    final banners = context.watch<BannerProvider>().items;
     final auth = context.watch<AuthProvider>();
     final guest = SupabaseService.currentUser == null;
     final displayName = auth.fullName.trim().isEmpty
@@ -124,15 +134,21 @@ class _HomeScreenState extends State<HomeScreen> {
         : auth.fullName.trim();
 
     return Scaffold(
-      backgroundColor: AppTheme.charColor,
+      backgroundColor: AppTheme.pageColor,
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
+            Container(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+              decoration: const BoxDecoration(
+                color: AppTheme.charColor,
+                border: Border(
+                  bottom: BorderSide(color: AppTheme.goldColor, width: 1),
+                ),
+              ),
               child: Row(
                 children: [
-                  const BrandLogo(size: 46, borderRadius: 14),
+                  const BrandLogo(size: 46, color: AppTheme.lightTextColor),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -140,16 +156,18 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         Text(
                           'Cà Phê Hải Tín',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                color: AppTheme.creamColor,
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(
+                                color: AppTheme.lightTextColor,
                                 fontWeight: FontWeight.w800,
                               ),
                         ),
                         Text(
-                          guest ? 'Phượng Hoàng Lửa' : 'Chào $displayName',
+                          guest ? 'Chào bạn' : 'Chào $displayName',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
                                 color: AppTheme.goldColor,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -159,9 +177,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   IconButton(
                     onPressed: () {},
+                    color: AppTheme.lightTextColor,
                     icon: const Icon(Icons.favorite_border_rounded),
                   ),
-                  CartBadge(onPressed: () => widget.onTabSelected?.call(2)),
+                  CartBadge(
+                    onPressed: () => widget.onTabSelected?.call(2),
+                    iconColor: AppTheme.lightTextColor,
+                  ),
                 ],
               ),
             ),
@@ -186,154 +208,143 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     )
                   : catalog.hasLoadError
-                      ? _CatalogMessage(
-                          text: catalog.errorMessage ?? 'Không tải được dữ liệu sản phẩm',
-                          onRetry: () => context
-                              .read<ProductProvider>()
-                              .loadCatalog(force: true),
-                        )
-                      : ListView(
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                          children: [
-                            if (banners.isNotEmpty)
-                              _BannerCarousel(
-                                banners: banners,
-                                currentBanner: _currentBanner,
-                                onPageChanged: (index) =>
-                                    setState(() => _currentBanner = index),
-                                onTap: _openBanner,
+                  ? _CatalogMessage(
+                      text:
+                          catalog.errorMessage ??
+                          'Không tải được dữ liệu sản phẩm',
+                      onRetry: () => context
+                          .read<ProductProvider>()
+                          .loadCatalog(force: true),
+                    )
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                      children: [
+                        BannerSlider(onTap: _openBanner),
+                        const SizedBox(height: 24),
+                        Text(
+                          'Danh Mục Nhanh',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                color: AppTheme.creamColor,
+                                fontWeight: FontWeight.w800,
                               ),
-                            if (banners.isNotEmpty) const SizedBox(height: 24),
-                            Text(
-                              'Danh Mục Nhanh',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                    color: AppTheme.creamColor,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                            ),
-                            const SizedBox(height: 12),
-                            catalog.categories.isEmpty
-                                ? const _EmptyText('Chưa có danh mục')
-                                : GridView.builder(
-                                    shrinkWrap: true,
-                                    physics:
-                                        const NeverScrollableScrollPhysics(),
-                                    gridDelegate:
-                                        const SliverGridDelegateWithFixedCrossAxisCount(
+                        ),
+                        const SizedBox(height: 12),
+                        catalog.categories.isEmpty
+                            ? const _EmptyText('Chưa có danh mục')
+                            : GridView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
                                       crossAxisCount: 4,
                                       crossAxisSpacing: 10,
                                       mainAxisSpacing: 10,
                                       childAspectRatio: 0.8,
                                     ),
-                                    itemCount: catalog.categories.length,
-                                    itemBuilder: (context, index) {
-                                      final item = catalog.categories[index];
-                                      return InkWell(
-                                        onTap: () => widget.onTabSelected?.call(1),
-                                        borderRadius:
-                                            BorderRadius.circular(18),
-                                        child: Column(
-                                          children: [
-                                            Container(
-                                              width: 58,
-                                              height: 58,
-                                              decoration: BoxDecoration(
-                                                color: AppTheme.surfaceColor,
-                                                borderRadius:
-                                                    BorderRadius.circular(18),
-                                                border: Border.all(
-                                                  color: AppTheme.lineColor,
-                                                ),
-                                              ),
-                                              child: Icon(
-                                                item.icon,
-                                                color: AppTheme.goldColor,
-                                              ),
+                                itemCount: catalog.categories.length,
+                                itemBuilder: (context, index) {
+                                  final item = catalog.categories[index];
+                                  return InkWell(
+                                    onTap: () => _openQuickCategory(item.title),
+                                    borderRadius: BorderRadius.circular(18),
+                                    child: Column(
+                                      children: [
+                                        Container(
+                                          width: 58,
+                                          height: 58,
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.surfaceColor,
+                                            borderRadius: BorderRadius.circular(
+                                              18,
                                             ),
-                                            const SizedBox(height: 6),
-                                            Text(
-                                              item.title,
-                                              textAlign: TextAlign.center,
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .bodySmall
-                                                  ?.copyWith(
-                                                    color:
-                                                        AppTheme.mutedColor,
-                                                  ),
+                                            border: Border.all(
+                                              color: AppTheme.lineColor,
                                             ),
-                                          ],
+                                          ),
+                                          child: Icon(
+                                            item.icon,
+                                            color: AppTheme.goldColor,
+                                          ),
                                         ),
-                                      );
-                                    },
-                                  ),
-                            const SizedBox(height: 24),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'Sản phẩm bán chạy',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleMedium
-                                      ?.copyWith(
-                                        color: AppTheme.creamColor,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                ),
-                                TextButton(
-                                  onPressed: () => widget.onTabSelected?.call(1),
-                                  child: const Text('Xem tất cả'),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            FutureBuilder<List<Product>>(
-                              future: _bestSellersFuture,
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState ==
-                                    ConnectionState.waiting) {
-                                  return const _ShimmerGrid();
-                                }
-
-                                final bestSellers = snapshot.data ?? const [];
-                                if (bestSellers.isEmpty) {
-                                  return _EmptyText(
-                                    catalog.isCatalogEmpty
-                                        ? 'Cửa hàng chưa có sản phẩm nào, quay lại sau nhé'
-                                        : 'Chưa có sản phẩm bán chạy',
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          item.title,
+                                          textAlign: TextAlign.center,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                color: AppTheme.mutedColor,
+                                              ),
+                                        ),
+                                      ],
+                                    ),
                                   );
-                                }
+                                },
+                              ),
+                        const SizedBox(height: 24),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Sản phẩm bán chạy',
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(
+                                    color: AppTheme.creamColor,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                            ),
+                            TextButton(
+                              onPressed: () => widget.onTabSelected?.call(1),
+                              child: const Text('Xem tất cả'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        FutureBuilder<List<Product>>(
+                          future: _bestSellersFuture,
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return const _ShimmerGrid();
+                            }
 
-                                return GridView.builder(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  gridDelegate:
-                                      const SliverGridDelegateWithFixedCrossAxisCount(
+                            final bestSellers = snapshot.data ?? const [];
+                            if (bestSellers.isEmpty) {
+                              return _EmptyText(
+                                catalog.isCatalogEmpty
+                                    ? 'Cửa hàng chưa có sản phẩm nào, quay lại sau nhé'
+                                    : 'Chưa có sản phẩm bán chạy',
+                              );
+                            }
+
+                            return GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
                                     crossAxisCount: 2,
                                     crossAxisSpacing: 12,
                                     mainAxisSpacing: 12,
                                     childAspectRatio: 0.78,
                                   ),
-                                  itemCount: bestSellers.length,
-                                  itemBuilder: (context, index) {
-                                    final product = bestSellers[index];
-                                    return ProductCard(
-                                      product: product,
-                                      onAddToCart: () =>
-                                          _addToCartIfLoggedIn(context, product),
-                                    );
-                                  },
+                              itemCount: bestSellers.length,
+                              itemBuilder: (context, index) {
+                                final product = bestSellers[index];
+                                return ProductCard(
+                                  product: product,
+                                  onAddToCart: () =>
+                                      _addToCartIfLoggedIn(context, product),
                                 );
                               },
-                            ),
-                          ],
+                            );
+                          },
                         ),
+                      ],
+                    ),
             ),
           ],
         ),
@@ -343,10 +354,7 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _GuestLoginBanner extends StatelessWidget {
-  const _GuestLoginBanner({
-    required this.onClose,
-    required this.onLogin,
-  });
+  const _GuestLoginBanner({required this.onClose, required this.onLogin});
 
   final VoidCallback onClose;
   final VoidCallback onLogin;
@@ -409,166 +417,6 @@ class _GuestLoginBanner extends StatelessWidget {
   }
 }
 
-class _BannerCarousel extends StatelessWidget {
-  const _BannerCarousel({
-    required this.banners,
-    required this.currentBanner,
-    required this.onPageChanged,
-    required this.onTap,
-  });
-
-  final List<BannerItem> banners;
-  final int currentBanner;
-  final ValueChanged<int> onPageChanged;
-  final Future<void> Function(BannerItem banner) onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final page = banners.isEmpty ? 0 : currentBanner % banners.length;
-
-    return Column(
-      children: [
-        CarouselSlider.builder(
-          itemCount: banners.length,
-          itemBuilder: (context, index, realIndex) {
-            final banner = banners[index];
-            return GestureDetector(
-              onTap: () => onTap(banner),
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 2),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  color: AppTheme.surfaceColor,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      if (banner.imageUrl.isNotEmpty)
-                        Image.network(
-                          banner.imageUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              const _BannerGradient(),
-                      )
-                      else
-                        const _BannerGradient(),
-                      Container(
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              Color(0xCC120A08),
-                              Color(0x66120A08),
-                              Color(0xCC120A08),
-                            ],
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.all(18),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            if (banner.tag.isNotEmpty)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.24),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  banner.tag,
-                                  style: const TextStyle(
-                                    color: AppTheme.goldColor,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                            if (banner.tag.isNotEmpty) const SizedBox(height: 8),
-                            Text(
-                              banner.title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: AppTheme.creamColor,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              banner.subtitle,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-          options: CarouselOptions(
-            height: 180,
-            viewportFraction: 1,
-            autoPlay: true,
-            autoPlayInterval: const Duration(seconds: 4),
-            onPageChanged: (index, reason) => onPageChanged(index),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(banners.length, (index) {
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              width: page == index ? 18 : 6,
-              height: 6,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(999),
-                color: page == index ? AppTheme.emberColor : AppTheme.lineColor,
-              ),
-            );
-          }),
-        ),
-      ],
-    );
-  }
-}
-
-class _BannerGradient extends StatelessWidget {
-  const _BannerGradient();
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF3A1710), Color(0xFFC81E2C), Color(0xFFFF7A29)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: const SizedBox.expand(),
-    );
-  }
-}
-
 class _ShimmerGrid extends StatelessWidget {
   const _ShimmerGrid();
 
@@ -606,11 +454,19 @@ class _ShimmerGrid extends StatelessWidget {
                   children: [
                     Container(height: 12, color: AppTheme.surfaceAltColor),
                     const SizedBox(height: 8),
-                    Container(height: 10, width: 96, color: AppTheme.surfaceAltColor),
+                    Container(
+                      height: 10,
+                      width: 96,
+                      color: AppTheme.surfaceAltColor,
+                    ),
                     const SizedBox(height: 10),
                     Row(
                       children: [
-                        Container(height: 14, width: 68, color: AppTheme.surfaceAltColor),
+                        Container(
+                          height: 14,
+                          width: 68,
+                          color: AppTheme.surfaceAltColor,
+                        ),
                         const Spacer(),
                         Container(
                           width: 34,
@@ -647,9 +503,9 @@ class _CatalogMessage extends StatelessWidget {
         children: [
           Text(
             text,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppTheme.mutedColor,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppTheme.mutedColor),
           ),
           const SizedBox(height: 12),
           TextButton(onPressed: onRetry, child: const Text('Tải lại')),
@@ -671,9 +527,9 @@ class _EmptyText extends StatelessWidget {
       child: Center(
         child: Text(
           text,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppTheme.mutedColor,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: AppTheme.mutedColor),
         ),
       ),
     );

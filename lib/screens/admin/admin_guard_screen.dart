@@ -36,7 +36,7 @@ class AdminGuardScreen extends StatelessWidget {
         return const Scaffold(
           backgroundColor: AppTheme.charColor,
           body: Center(
-            child: Text('Không có quyền truy cập', style: TextStyle(color: AppTheme.creamColor)),
+            child: Text('Không có quyền truy cập', style: TextStyle(color: AppTheme.lightTextColor)),
           ),
         );
       },

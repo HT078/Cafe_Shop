@@ -26,17 +26,33 @@ class BannerItem {
   final DateTime? endAt;
 
   bool get isVisibleNow {
-    final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
-    final startOk = startAt == null || !startAt!.isAfter(today);
-    final endOk = endAt == null || !endAt!.isBefore(today);
+    final today = DateTime.now();
+    final dateOnly = DateTime(today.year, today.month, today.day);
+    final startDate = startAt == null
+        ? null
+        : DateTime(startAt!.year, startAt!.month, startAt!.day);
+    final endDate = endAt == null
+        ? null
+        : DateTime(endAt!.year, endAt!.month, endAt!.day);
+
+    final startOk = startDate == null || !startDate.isAfter(dateOnly);
+    final endOk = endDate == null || !endDate.isBefore(dateOnly);
     return isActive && startOk && endOk;
   }
 
   String get statusLabel {
-    final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    final today = DateTime.now();
+    final dateOnly = DateTime(today.year, today.month, today.day);
+    final startDate = startAt == null
+        ? null
+        : DateTime(startAt!.year, startAt!.month, startAt!.day);
+    final endDate = endAt == null
+        ? null
+        : DateTime(endAt!.year, endAt!.month, endAt!.day);
+
     if (!isActive) return 'Đã tắt';
-    if (startAt != null && startAt!.isAfter(today)) return 'Sắp chạy';
-    if (endAt != null && endAt!.isBefore(today)) return 'Đã hết hạn';
+    if (startDate != null && startDate.isAfter(dateOnly)) return 'Sắp chạy';
+    if (endDate != null && endDate.isBefore(dateOnly)) return 'Đã hết hạn';
     return 'Đang chạy';
   }
 

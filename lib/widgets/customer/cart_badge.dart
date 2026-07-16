@@ -5,9 +5,10 @@ import '../../providers/cart_provider.dart';
 import '../../theme/theme.dart';
 
 class CartBadge extends StatelessWidget {
-  const CartBadge({super.key, required this.onPressed});
+  const CartBadge({super.key, required this.onPressed, this.iconColor});
 
   final VoidCallback onPressed;
+  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +19,7 @@ class CartBadge extends StatelessWidget {
       children: [
         IconButton(
           onPressed: onPressed,
-          icon: const Icon(Icons.shopping_bag_outlined),
+          icon: Icon(Icons.shopping_bag_outlined, color: iconColor),
         ),
         if (count > 0)
           Positioned(

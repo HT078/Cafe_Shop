@@ -53,14 +53,12 @@ class Product {
     final now = DateTime.now();
     final startsOk = saleStart == null || !saleStart!.isAfter(now);
     final endsOk = saleEnd == null || saleEnd!.isAfter(now);
-    return startsOk && endsOk && ((salePercent ?? 0) > 0 || (salePrice ?? 0) > 0);
+    return startsOk &&
+        endsOk &&
+        ((salePercent ?? 0) > 0 || (salePrice ?? 0) > 0);
   }
 
-  int priceFor(
-    String weight, {
-    bool isAgent = false,
-    bool includeSale = true,
-  }) {
+  int priceFor(String weight, {bool isAgent = false, bool includeSale = true}) {
     final retail = pricesByWeight[weight] ?? price;
     if (isAgent) return agentPricesByWeight[weight] ?? retail;
     if (!includeSale || !isOnSale) return retail;
@@ -74,38 +72,57 @@ class Product {
   factory Product.fromMap(Map<String, dynamic> map) {
     final categoryValue = map['category'];
     final categoryMap = map['categories'];
-    final prices = _intMap(map['prices_by_weight'] ?? map['pricesByWeight']);
+    final prices = <String, int>{
+      ..._intMap(map['prices_by_weight'] ?? map['pricesByWeight']),
+      // Support the older products schema used by existing Supabase rows.
+      if (map.containsKey('price_250g')) '250g': _asInt(map['price_250g']),
+      if (map.containsKey('price_500g')) '500g': _asInt(map['price_500g']),
+      if (map.containsKey('price_1kg')) '1kg': _asInt(map['price_1kg']),
+    }..removeWhere((key, value) => value <= 0);
+
+    final storedPrice = _asInt(map['price']);
+    final basePrice = storedPrice > 0
+        ? storedPrice
+        : (prices['500g'] ?? (prices.isEmpty ? 0 : prices.values.first));
 
     final agentPrices = <String, int>{
       ..._intMap(map['agent_prices_by_weight'] ?? map['agentPricesByWeight']),
-      if (map.containsKey('agent_price_250g')) '250g': _asInt(map['agent_price_250g']),
-      if (map.containsKey('agent_price_500g')) '500g': _asInt(map['agent_price_500g']),
-      if (map.containsKey('agent_price_1kg')) '1kg': _asInt(map['agent_price_1kg']),
+      if (map.containsKey('agent_price_250g'))
+        '250g': _asInt(map['agent_price_250g']),
+      if (map.containsKey('agent_price_500g'))
+        '500g': _asInt(map['agent_price_500g']),
+      if (map.containsKey('agent_price_1kg'))
+        '1kg': _asInt(map['agent_price_1kg']),
     }..removeWhere((key, value) => value <= 0);
 
     return Product(
       id: map['id'].toString(),
       name: (map['name'] ?? '').toString(),
       description: (map['description'] ?? '').toString(),
-      category: categoryMap is Map
-          ? (categoryMap['title'] ?? categoryMap['name'] ?? '').toString()
-          : (categoryValue ?? '').toString(),
-      price: _asInt(map['price']),
+      category: _categoryName(categoryValue, categoryMap),
+      price: basePrice,
       pricesByWeight: prices,
       imageUrls: _stringList(
-        map['image_urls'] ?? map['imageUrls'] ?? map['image_url'] ?? map['imageUrl'],
+        map['image_urls'] ??
+            map['imageUrls'] ??
+            map['image_url'] ??
+            map['imageUrl'],
       ),
       badge: (map['badge'] ?? '').toString(),
       flavorProfile: _intMap(map['flavor_profile'] ?? map['flavorProfile']),
       grindOptions: _stringList(map['grind_options'] ?? map['grindOptions']),
-      weights: _stringList(map['weights']).isEmpty ? prices.keys.toList() : _stringList(map['weights']),
+      weights: _stringList(map['weights']).isEmpty
+          ? prices.keys.toList()
+          : _stringList(map['weights']),
       isBestSeller:
           map['is_bestseller'] == true ||
           map['is_best_seller'] == true ||
           map['isBestSeller'] == true,
       weightLabel: (map['weight_label'] ?? map['weightLabel'] ?? '').toString(),
       stock: _asInt(map['stock']),
-      lowStockThreshold: _asInt(map['low_stock_threshold']) == 0 ? 5 : _asInt(map['low_stock_threshold']),
+      lowStockThreshold: _asInt(map['low_stock_threshold']) == 0
+          ? 5
+          : _asInt(map['low_stock_threshold']),
       isActive: map['is_active'] != false && _asInt(map['stock']) > 0,
       salePercent: _nullableInt(map['sale_percent']),
       salePrice: _nullableInt(map['sale_price']),
@@ -119,6 +136,14 @@ class Product {
     if (value is int) return value;
     if (value is num) return value.round();
     return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  static String _categoryName(dynamic categoryValue, dynamic categoryMap) {
+    final raw = categoryMap is Map
+        ? (categoryMap['title'] ?? categoryMap['name'] ?? '').toString()
+        : (categoryValue ?? '').toString();
+    final trimmed = raw.trim();
+    return trimmed.isEmpty ? 'Chưa phân loại' : trimmed;
   }
 
   static int? _nullableInt(dynamic value) {
